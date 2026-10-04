@@ -1,0 +1,28 @@
+<!doctype html><html><head><style>
+body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#fff}
+svg{width:96vw!important;max-width:none!important;max-height:96vh}
+</style></head><body><pre class="mermaid">flowchart TD
+  subgraph Power["1. Power"]
+    direction LR
+    OHL["Overhead wire 25 kV&lt;br/>(electric)"] --> PANTO["Pantograph"] --> XFMR["Transformer"]
+    DSL["Diesel engine&lt;br/>(diesel-electric)"] --> ALT["Alternator"]
+  end
+  XFMR --> CONV["Rectifier + inverter&lt;br/>sets voltage and frequency"]
+  ALT --> CONV
+  DRIVER["Driver: throttle / brake"] -->|power level| CONV
+  SIG["Signals: one train per block"] -->|red / green| DRIVER
+  CONV --> TM["Traction motor on each axle"]
+  TM -->|gears| WHEEL["Steel wheels on steel rail"]
+  WHEEL --> FLANGE["Coned treads + flanges&lt;br/>steer through curves"]
+  WHEEL -->|pull through couplers| CARS["Passenger / freight cars"]
+  subgraph Brakes["2. Braking"]
+    direction LR
+    REGEN["Regenerative braking&lt;br/>motors act as generators"]
+    AIR["Air brakes&lt;br/>pressure drop = brakes apply"]
+  end
+  DRIVER -->|brake| Brakes
+  REGEN -.->|energy back| OHL
+  AIR --> WHEEL</pre><script type="module">
+import m from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'
+m.initialize({ startOnLoad: true, theme: 'default' })
+</script></body></html>

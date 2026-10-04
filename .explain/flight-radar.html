@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Flight Radar Works</title>
+<style>
+  :root{
+    --bg:#0b1220; --panel:#111a2e; --line:#22304d; --text:#e6ecf7; --muted:#8b9bb8;
+    --adsb:#38bdf8; --mlat:#f59e0b; --sat:#a78bfa; --ok:#34d399;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+  header{padding:18px 24px 8px}
+  h1{margin:0;font-size:24px;letter-spacing:-.01em}
+  header p{margin:4px 0 0;color:var(--muted)}
+  main{display:grid;grid-template-columns:780px 1fr;gap:16px;padding:8px 24px 24px;max-width:1200px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  .stage{padding:10px}
+  .modes{display:flex;gap:8px;margin-bottom:8px}
+  .modes button{flex:1;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0d1526;color:var(--text);font:600 13px system-ui;cursor:pointer}
+  .modes button[aria-pressed=true]{border-color:currentColor}
+  .modes button[data-m=adsb]{color:var(--adsb)} .modes button[data-m=mlat]{color:var(--mlat)} .modes button[data-m=sat]{color:var(--sat)}
+  .modes button span{display:block;font-weight:400;font-size:11px;color:var(--muted)}
+  canvas{display:block;width:760px;height:520px;border-radius:8px;background:#0a1020}
+  .side{display:flex;flex-direction:column;gap:12px}
+  .side .card{padding:14px 16px}
+  h2{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  ol{margin:0;padding-left:20px} li{margin:6px 0} li b{color:var(--text)}
+  .msg{font:12px/1.6 ui-monospace,Menlo,monospace}
+  .msg div{display:flex;justify-content:space-between;border-bottom:1px dashed var(--line)}
+  .msg span:first-child{color:var(--muted)}
+  #explain{min-height:110px}
+  .tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:700;color:#0b1220}
+</style>
+</head>
+<body>
+<header>
+  <h1>How flight radar apps track planes</h1>
+  <p>Planes broadcast where they are on 1090 MHz. Thousands of cheap ground receivers listen, forward the messages to a server, and the server draws the map you see.</p>
+</header>
+<main>
+  <section class="card stage">
+    <div class="modes" role="group" aria-label="Tracking method">
+      <button data-m="adsb" aria-pressed="true">ADS-B<span>plane sends its own GPS position</span></button>
+      <button data-m="mlat" aria-pressed="false">MLAT<span>position from arrival-time differences</span></button>
+      <button data-m="sat" aria-pressed="false">Satellite<span>over oceans, no ground receivers</span></button>
+    </div>
+    <canvas id="c" width="1520" height="1040" aria-label="Animated diagram of planes, receivers, server and app"></canvas>
+  </section>
+  <aside class="side">
+    <div class="card"><h2>What's happening</h2><div id="explain"></div></div>
+    <div class="card"><h2>Last message decoded</h2><div class="msg" id="msg"></div></div>
+    <div class="card"><h2>The pipeline</h2>
+      <ol>
+        <li><b>Transponder</b> broadcasts about twice a second, unencrypted.</li>
+        <li><b>Receiver</b> (antenna plus a small computer, often run by volunteers) decodes it. Range is about 250–400 km, line of sight.</li>
+        <li><b>Server</b> merges feeds, removes duplicates, and computes MLAT.</li>
+        <li><b>App</b> gets updates every few seconds and adds flight schedules and airline data.</li>
+      </ol>
+    </div>
+  </aside>
+</main>
+<script>
+const cv=document.getElementById('c'),g=cv.getContext('2d');g.scale(2,2);
+const W=760,H=520,C={adsb:'#38bdf8',mlat:'#f59e0b',sat:'#a78bfa',ok:'#34d399',muted:'#8b9bb8',line:'#22304d'};
+const EXPLAIN={
+  adsb:`<span class="tag" style="background:${C.adsb}">ADS-B</span> The plane's own GPS works out its position. Its transponder broadcasts that position with its altitude, speed and callsign. Any receiver in range can decode it, and one receiver is enough. This is how most planes on the map are tracked.`,
+  mlat:`<span class="tag" style="background:${C.mlat}">MLAT</span> Older planes send a Mode S reply with no position in it. Four or more receivers, synced to GPS time, timestamp the same signal to the nanosecond. The server turns the arrival-time differences into a position fix. This needs dense receiver coverage.`,
+  sat:`<span class="tag" style="background:${C.sat}">Satellite</span> Over oceans there are no ground receivers. Low-orbit satellites carry ADS-B receivers and send the messages down to a ground station. Gaps between satellite passes mean the app may show an <i>estimated</i> track.`
+};
+let mode='adsb';
+document.querySelectorAll('.modes button').forEach(b=>b.onclick=()=>{
+  mode=b.dataset.m;document.querySelectorAll('.modes button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  pulses=[];packets=[];stamps=[];document.getElementById('explain').innerHTML=EXPLAIN[mode];
+});
+document.getElementById('explain').innerHTML=EXPLAIN.adsb;
+
+const RX=[{x:70,y:330},{x:200,y:345},{x:330,y:330},{x:460,y:345}];
+const SAT={x:650,y:50}, GS={x:560,y:350}, SRV={x:200,y:455}, APP={x:470,y:455};
+const planes=[
+  {x:120,y:150,v:22,id:'4CA1E3',cs:'RYR82K',alt:36000,kt:448,sq:'adsb'},
+  {x:300,y:200,v:16,id:'3C6589',cs:'DLH4AK',alt:24500,kt:390,sq:'mlat'},
+  {x:620,y:170,v:20,id:'A0B2F1',cs:'UAL901',alt:38000,kt:502,sq:'sat'},
+];
+let pulses=[],packets=[],stamps=[],appDots={},last=performance.now(),t=0,emitT=0,flash={};
+
+function active(){return planes.find(p=>p.sq===mode)}
+function emit(){
+  const p=active();pulses.push({x:p.x,y:p.y,r:0,p,hit:new Set()});
+  if(mode==='mlat')stamps=[];
+}
+function send(from,to,color,then){packets.push({fx:from.x,fy:from.y,tx:to.x,ty:to.y,k:0,color,then})}
+
+function step(dt){
+  t+=dt;emitT-=dt;if(emitT<=0){emit();emitT=2.2}
+  planes.forEach(p=>{p.x+=p.v*dt*(p.sq==='sat'?.6:1);
+    if(p.sq==='sat'){if(p.x>735)p.x=575}else if(p.x>540)p.x=20});
+  pulses.forEach(u=>{u.r+=230*dt;
+    const targets=mode==='sat'?[SAT]:RX;
+    targets.forEach((rx,i)=>{
+      const d=Math.hypot(rx.x-u.x,rx.y-u.y);
+      if(!u.hit.has(i)&&u.r>=d&&d<(mode==='sat'?400:330)){
+        u.hit.add(i);flash[mode==='sat'?'sat':i]=.4;
+        if(mode==='sat'){send(SAT,GS,C.sat,()=>send(GS,SRV,C.sat,()=>toServer(u.p)))}
+        else if(mode==='mlat'){stamps.push({i,t:(d/0.2998).toFixed(0)});send(rx,SRV,C.mlat,()=>{if(stamps.length>=4&&!u.done){u.done=1;toServer(u.p)}})}
+        else if(i===0||!u.sent){u.sent=1;send(rx,SRV,C.adsb,()=>toServer(u.p))}
+      }
+    });
+  });
+  pulses=pulses.filter(u=>u.r<480);
+  packets.forEach(k=>{k.k+=dt*1.6;if(k.k>=1&&!k.fired){k.fired=1;k.then&&k.then()}});
+  packets=packets.filter(k=>k.k<1);
+  for(const k in flash)flash[k]-=dt;
+}
+function toServer(p){flash.srv=.4;send(SRV,APP,C.ok,()=>{flash.app=.4;appDots[p.id]={p,x:p.x,y:p.y,m:mode,ts:t};showMsg(p)})}
+function showMsg(p){
+  const pos=mode==='mlat'?'computed by server':`${(51.4+p.x/900).toFixed(4)}, ${(-0.4+p.y/700).toFixed(4)}`;
+  const rows=[['ICAO address',p.id],['Callsign',p.cs],['Altitude',p.alt.toLocaleString()+' ft'],['Ground speed',p.kt+' kt'],
+    ['Position',pos],['Source',{adsb:'ADS-B (1 receiver)',mlat:'MLAT ('+stamps.length+' receivers)',sat:'Satellite ADS-B'}[mode]]];
+  document.getElementById('msg').innerHTML=rows.map(r=>`<div><span>${r[0]}</span><span>${r[1]}</span></div>`).join('');
+}
+
+function txt(s,x,y,c=C.muted,sz=11,al='center',w=400){g.fillStyle=c;g.font=`${w} ${sz}px system-ui`;g.textAlign=al;g.fillText(s,x,y)}
+function plane(p){
+  const col=C[p.sq],on=p.sq===mode;g.save();g.translate(p.x,p.y);g.globalAlpha=on?1:.35;g.fillStyle=col;
+  g.beginPath();g.moveTo(14,0);g.lineTo(-10,-4);g.lineTo(-12,-12);g.lineTo(-6,-3);g.lineTo(-14,-3);g.lineTo(-14,3);g.lineTo(-6,3);g.lineTo(-12,12);g.lineTo(-10,4);g.closePath();g.fill();
+  g.restore();txt(p.cs+(p.sq==='mlat'?' · Mode S only':p.sq==='adsb'?' · GPS on board':''),p.x,p.y-18,on?col:C.muted,10);
+}
+function antenna(x,y,f,label){
+  g.strokeStyle=f>0?'#fff':C.muted;g.lineWidth=2;g.beginPath();g.moveTo(x,y);g.lineTo(x,y-22);g.moveTo(x-8,y);g.lineTo(x,y-14);g.lineTo(x+8,y);g.stroke();
+  if(f>0){g.fillStyle='rgba(255,255,255,.25)';g.beginPath();g.arc(x,y-22,10,0,7);g.fill()}
+  txt(label,x,y+14);
+}
+function box(o,w,h,title,sub,f,col){
+  g.fillStyle=f>0?'#1d2b4a':'#121c33';g.strokeStyle=f>0?col:C.line;g.lineWidth=1.5;
+  g.beginPath();g.roundRect(o.x-w/2,o.y-h/2,w,h,8);g.fill();g.stroke();
+  txt(title,o.x,o.y-2,'#e6ecf7',12,'center',700);txt(sub,o.x,o.y+13,C.muted,10);
+}
+function draw(){
+  g.clearRect(0,0,W,H);
+  // sky / ground / ocean
+  const sky=g.createLinearGradient(0,0,0,300);sky.addColorStop(0,'#0c1530');sky.addColorStop(1,'#0a1020');g.fillStyle=sky;g.fillRect(0,0,W,310);
+  g.fillStyle='#0f1d17';g.fillRect(0,310,540,60);g.fillStyle='#0b1a2e';g.fillRect(540,310,220,60);
+  txt('LAND (receivers)',20,365,'#3b5b4a',10,'left');txt('OCEAN (no receivers)',745,365,'#2d4a6e',10,'right');
+  txt('1090 MHz broadcasts',20,22,C.muted,11,'left',600);
+
+  // receiver range hint
+  if(mode!=='sat'){g.setLineDash([3,5]);g.strokeStyle='rgba(139,155,184,.18)';RX.forEach(r=>{g.beginPath();g.arc(r.x,r.y,330,Math.PI,2*Math.PI);g.stroke()});g.setLineDash([])}
+
+  // pulses
+  pulses.forEach(u=>{g.strokeStyle=C[mode];g.globalAlpha=Math.max(0,1-u.r/480)*.8;g.lineWidth=2;g.beginPath();g.arc(u.x,u.y,u.r,0,7);g.stroke();g.globalAlpha=1});
+
+  // MLAT triangulation lines
+  if(mode==='mlat'&&stamps.length){const p=active();g.setLineDash([4,4]);g.strokeStyle='rgba(245,158,11,.5)';
+    stamps.forEach(s=>{const r=RX[s.i];g.beginPath();g.moveTo(r.x,r.y-22);g.lineTo(p.x,p.y);g.stroke();txt('t'+(s.i+1)+'='+s.t+' ns',r.x,r.y-30,C.mlat,10,'center',600)});g.setLineDash([])}
+
+  planes.forEach(plane);
+  RX.forEach((r,i)=>antenna(r.x,r.y,flash[i]||0,'Receiver '+(i+1)));
+
+  // satellite + ground station
+  g.globalAlpha=mode==='sat'?1:.3;
+  g.fillStyle=C.sat;g.fillRect(SAT.x-6,SAT.y-6,12,12);g.fillRect(SAT.x-28,SAT.y-3,18,6);g.fillRect(SAT.x+10,SAT.y-3,18,6);
+  if((flash.sat||0)>0){g.strokeStyle='#fff';g.beginPath();g.arc(SAT.x,SAT.y,14,0,7);g.stroke()}
+  txt('LEO satellite',SAT.x,SAT.y+22,C.sat,10);
+  antenna(GS.x,GS.y,0,'Ground station');g.globalAlpha=1;
+
+  // links
+  g.strokeStyle=C.line;g.lineWidth=1;RX.forEach(r=>{g.beginPath();g.moveTo(r.x,r.y+18);g.lineTo(SRV.x,SRV.y-22);g.stroke()});
+  g.beginPath();g.moveTo(SRV.x+80,SRV.y);g.lineTo(APP.x-110,APP.y);g.stroke();
+  g.beginPath();g.moveTo(GS.x,GS.y+18);g.lineTo(SRV.x+80,SRV.y-10);g.stroke();
+  txt('internet',335,APP.y-6,C.muted,10);
+
+  box(SRV,160,46,'Aggregation server','merge · dedupe · MLAT',flash.srv||0,C.ok);
+
+  // app map
+  const ax=APP.x-110,ay=APP.y-50,aw=280,ah=100;
+  g.fillStyle='#0e1a30';g.strokeStyle=(flash.app||0)>0?C.ok:C.line;g.lineWidth=1.5;g.beginPath();g.roundRect(ax,ay,aw,ah,8);g.fill();g.stroke();
+  g.fillStyle='#13263f';g.fillRect(ax+4,ay+18,aw*.7-4,ah-22);g.fillStyle='#0b1f38';g.fillRect(ax+aw*.7,ay+18,aw*.3-4,ah-22);
+  txt('Flight radar app',ax+8,ay+13,'#e6ecf7',11,'left',700);
+  Object.values(appDots).forEach(d=>{const px=ax+6+(d.p.x/W)*(aw-12),py=ay+22+(d.p.y/300)*(ah-30);
+    g.fillStyle=C[d.m];g.beginPath();g.arc(px,py,4,0,7);g.fill();txt(d.p.cs,px,py-6,C[d.m],9,'center',600);
+    if(d.m==='sat'&&t-d.ts>1.5){g.setLineDash([2,3]);g.strokeStyle=C.sat;g.beginPath();g.moveTo(px,py);g.lineTo(px+18,py);g.stroke();g.setLineDash([])}});
+
+  // packets
+  packets.forEach(k=>{const x=k.fx+(k.tx-k.fx)*k.k,y=k.fy+(k.ty-k.fy)*k.k;g.fillStyle=k.color;g.shadowColor=k.color;g.shadowBlur=10;g.beginPath();g.arc(x,y,4,0,7);g.fill();g.shadowBlur=0});
+}
+function loop(now){step(Math.min(.05,(now-last)/1000));last=now;draw();requestAnimationFrame(loop)}
+emit();requestAnimationFrame(loop);
+</script>
+</body>
+</html>

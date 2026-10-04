@@ -1,0 +1,22 @@
+flowchart TD
+  subgraph Power["1. Power"]
+    direction LR
+    OHL["Overhead wire 25 kV<br/>(electric)"] --> PANTO["Pantograph"] --> XFMR["Transformer"]
+    DSL["Diesel engine<br/>(diesel-electric)"] --> ALT["Alternator"]
+  end
+  XFMR --> CONV["Rectifier + inverter<br/>sets voltage and frequency"]
+  ALT --> CONV
+  DRIVER["Driver: throttle / brake"] -->|power level| CONV
+  SIG["Signals: one train per block"] -->|red / green| DRIVER
+  CONV --> TM["Traction motor on each axle"]
+  TM -->|gears| WHEEL["Steel wheels on steel rail"]
+  WHEEL --> FLANGE["Coned treads + flanges<br/>steer through curves"]
+  WHEEL -->|pull through couplers| CARS["Passenger / freight cars"]
+  subgraph Brakes["2. Braking"]
+    direction LR
+    REGEN["Regenerative braking<br/>motors act as generators"]
+    AIR["Air brakes<br/>pressure drop = brakes apply"]
+  end
+  DRIVER -->|brake| Brakes
+  REGEN -.->|energy back| OHL
+  AIR --> WHEEL

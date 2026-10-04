@@ -1,0 +1,7 @@
+{
+  "name": "explain-as",
+  "version": "0.2.0",
+  "description": "/explain: get answers as ASD-STE100 prose, a diagram, an HTML page, or a 3b1b-style video",
+  "author": { "name": "Sumit Paul" },
+  "types": "./types/index.d.ts"
+}

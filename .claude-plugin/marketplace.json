@@ -1,0 +1,11 @@
+{
+  "name": "explain-as",
+  "owner": { "name": "Sumit Paul" },
+  "plugins": [
+    {
+      "name": "explain-as",
+      "source": "./",
+      "description": "/explain: get answers as ASD-STE100 prose, a diagram, an HTML page, or a 3b1b-style video"
+    }
+  ]
+}

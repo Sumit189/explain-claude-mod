@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How Transformers Work</title>
+<style>
+:root{
+  --bg:#f7f6f2;--card:#ffffff;--ink:#1d1d1b;--muted:#6b6a64;--line:#dddbd3;
+  --a:#d9622b;--a-soft:#f6dccd;--b:#2f6fb5;--b-soft:#d6e4f4;--c:#3a8a5c;--c-soft:#d5ecdf;--d:#8a5cc2;--d-soft:#e7dcf5;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#151513;--card:#1f1f1c;--ink:#ecebe6;--muted:#a09f98;--line:#35342f;
+  --a:#f0814d;--a-soft:#4a2a1b;--b:#6ea5e8;--b-soft:#1d3350;--c:#62c08a;--c-soft:#1b3a28;--d:#b48ef0;--d-soft:#33264a;}}
+:root[data-theme="dark"]{
+  --bg:#151513;--card:#1f1f1c;--ink:#ecebe6;--muted:#a09f98;--line:#35342f;
+  --a:#f0814d;--a-soft:#4a2a1b;--b:#6ea5e8;--b-soft:#1d3350;--c:#62c08a;--c-soft:#1b3a28;--d:#b48ef0;--d-soft:#33264a;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
+h1{font-size:26px;margin:0 0 2px;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:0 0 14px}
+.grid{display:grid;grid-template-columns:400px 1fr;gap:16px}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card h2{font-size:15px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+svg text{font-family:inherit}
+.blk{cursor:pointer;transition:opacity .2s}
+.blk:hover{opacity:.85}
+#info{font-size:13.5px;min-height:62px;margin-top:6px;padding:8px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--line)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+.chip{border:1px solid var(--line);border-radius:7px;padding:4px 9px;cursor:pointer;font-size:15px;position:relative;background:var(--card);color:var(--ink);transition:background .2s}
+.chip.sel{outline:2px solid var(--a);outline-offset:1px}
+.chip small{display:block;font-size:10px;color:var(--muted);text-align:center;line-height:1}
+.row{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-bottom:8px}
+.seg button{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:4px 10px;cursor:pointer;font:inherit}
+.seg button:first-child{border-radius:7px 0 0 7px}.seg button:last-child{border-radius:0 7px 7px 0;border-left:0}
+.seg button.on{background:var(--ink);color:var(--bg)}
+#mat{display:grid;gap:2px;font-size:11px}
+#mat div{display:flex;align-items:center;justify-content:center;height:24px;border-radius:3px}
+#mat .lbl{color:var(--muted);justify-content:flex-end;padding-right:4px}
+#mat .clbl{writing-mode:vertical-rl;transform:rotate(180deg);height:46px;justify-content:flex-start;color:var(--muted)}
+#mat .cell{cursor:pointer}
+.formula{font-family:ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;margin:8px 0}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:16px}
+.steps .card p{margin:4px 0;font-size:14px}
+.num{display:inline-flex;width:22px;height:22px;border-radius:50%;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;margin-right:6px}
+.bars{margin-top:8px}
+.bar{display:grid;grid-template-columns:52px 1fr 46px;gap:8px;align-items:center;font-size:13px;margin:3px 0}
+.bar .t{height:14px;border-radius:3px;background:var(--a);transition:width .25s}
+.bar .v{color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:160px;accent-color:var(--a)}
+.legend{font-size:12px;color:var(--muted);margin-top:6px}
+.muted{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>How a Transformer works</h1>
+  <p class="sub">Text in → numbers → tokens repeatedly <b>look at each other</b> (attention) and <b>think alone</b> (feed-forward) → probability of the next token. Click any block or any word.</p>
+
+  <div class="grid">
+    <!-- PIPELINE -->
+    <div class="card">
+      <h2>The pipeline (GPT-style decoder)</h2>
+      <svg viewBox="0 0 370 560" width="100%" role="img" aria-label="Transformer pipeline diagram">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker>
+        </defs>
+        <!-- bottom to top flow -->
+        <g class="blk" data-k="tok"><rect x="60" y="500" width="250" height="44" rx="9" fill="var(--bg)" stroke="var(--line)"/><text x="185" y="520" text-anchor="middle" font-size="14" font-weight="600" fill="var(--ink)">"The cat sat on the"</text><text x="185" y="536" text-anchor="middle" font-size="11" fill="var(--muted)">tokenize → [464, 3797, 3332, 319, 262]</text></g>
+        <line x1="185" y1="498" x2="185" y2="474" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <g class="blk" data-k="emb"><rect x="60" y="430" width="250" height="42" rx="9" fill="var(--b-soft)" stroke="var(--b)"/><text x="185" y="449" text-anchor="middle" font-size="14" font-weight="600" fill="var(--ink)">Embedding + Position</text><text x="185" y="464" text-anchor="middle" font-size="11" fill="var(--muted)">each token → vector of d numbers</text></g>
+        <line x1="185" y1="428" x2="185" y2="398" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+
+        <!-- block -->
+        <rect x="30" y="140" width="310" height="256" rx="14" fill="none" stroke="var(--ink)" stroke-dasharray="5 4"/>
+        <text x="44" y="160" font-size="12" font-weight="700" fill="var(--ink)">Transformer block</text>
+        <text x="326" y="160" text-anchor="end" font-size="12" font-weight="700" fill="var(--a)">× N  (e.g. 96)</text>
+
+        <g class="blk" data-k="att"><rect x="60" y="320" width="250" height="56" rx="9" fill="var(--a-soft)" stroke="var(--a)" stroke-width="1.5"/><text x="185" y="343" text-anchor="middle" font-size="15" font-weight="700" fill="var(--ink)">Masked Multi-Head Attention</text><text x="185" y="362" text-anchor="middle" font-size="11" fill="var(--muted)">tokens exchange information</text></g>
+        <line x1="185" y1="318" x2="185" y2="300" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <g class="blk" data-k="norm"><rect x="100" y="270" width="170" height="28" rx="7" fill="var(--bg)" stroke="var(--line)"/><text x="185" y="289" text-anchor="middle" font-size="12" fill="var(--ink)">Add &amp; LayerNorm</text></g>
+        <line x1="185" y1="268" x2="185" y2="250" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <g class="blk" data-k="ffn"><rect x="60" y="196" width="250" height="52" rx="9" fill="var(--c-soft)" stroke="var(--c)" stroke-width="1.5"/><text x="185" y="218" text-anchor="middle" font-size="15" font-weight="700" fill="var(--ink)">Feed-Forward (MLP)</text><text x="185" y="236" text-anchor="middle" font-size="11" fill="var(--muted)">each token processed alone</text></g>
+        <line x1="185" y1="194" x2="185" y2="176" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <g class="blk" data-k="norm"><rect x="100" y="166" width="170" height="0" /></g>
+        <!-- residual skips -->
+        <g class="blk" data-k="res">
+          <path d="M60 390 H44 V284 H98" fill="none" stroke="var(--d)" stroke-width="1.8" marker-end="url(#ar)"/>
+          <path d="M310 262 H326 V178 H275" fill="none" stroke="var(--d)" stroke-width="1.8" marker-end="url(#ar)"/>
+          <text x="340" y="225" font-size="10" fill="var(--d)" transform="rotate(90 340 225)" text-anchor="middle">residual</text>
+        </g>
+        <line x1="185" y1="140" x2="185" y2="118" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <g class="blk" data-k="out"><rect x="60" y="74" width="250" height="42" rx="9" fill="var(--d-soft)" stroke="var(--d)"/><text x="185" y="93" text-anchor="middle" font-size="14" font-weight="600" fill="var(--ink)">Linear → Softmax</text><text x="185" y="108" text-anchor="middle" font-size="11" fill="var(--muted)">score every word in the vocabulary</text></g>
+        <line x1="185" y1="72" x2="185" y2="50" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <g class="blk" data-k="samp"><rect x="110" y="8" width="150" height="40" rx="20" fill="var(--ink)"/><text x="185" y="33" text-anchor="middle" font-size="15" font-weight="700" fill="var(--bg)">"mat" (53%)</text></g>
+      </svg>
+      <div id="info"><b>Click a block</b> to see what it does. Data flows bottom → top; the dashed box repeats N times.</div>
+    </div>
+
+    <!-- ATTENTION DEMO -->
+    <div class="card">
+      <h2>Attention, live: who is each word looking at?</h2>
+      <div class="row">
+        <span>Head:</span>
+        <span class="seg" id="heads"><button data-h="0" class="on">Meaning (coreference)</button><button data-h="1">Grammar (neighbours)</button></span>
+        <label><input type="checkbox" id="causal" checked> causal mask (can't see the future)</label>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="legend" id="expl"></div>
+      <div class="formula">Attention(Q,K,V) = softmax( Q·Kᵀ / √d<sub>k</sub> ) · V</div>
+      <p class="muted" style="font-size:13px;margin:4px 0 8px">Each word makes a <b style="color:var(--a)">Query</b> ("what am I looking for?"), a <b style="color:var(--b)">Key</b> ("what do I contain?") and a <b style="color:var(--c)">Value</b> ("what I'll pass on"). Query·Key = relevance score → softmax turns scores into weights summing to 1 → the word's new vector is the weighted mix of Values. Row = word asking, column = word being looked at.</p>
+      <div id="mat"></div>
+    </div>
+  </div>
+
+  <div class="steps">
+    <div class="card"><span class="num" style="background:var(--muted)">1</span><b>Tokenize</b><p>Text is split into sub-word pieces ("un", "believ", "able") and each piece gets an ID from a fixed vocabulary of ~50–200k entries.</p></div>
+    <div class="card"><span class="num" style="background:var(--b)">2</span><b>Embed + position</b><p>Each ID looks up a learned vector (thousands of numbers). Attention itself ignores order, so position info is added (sinusoids, learned vectors, or RoPE rotations).</p></div>
+    <div class="card"><span class="num" style="background:var(--a)">3</span><b>Attention</b><p>Every token gathers context from relevant earlier tokens — "it" pulls in meaning from "cat". Many <b>heads</b> run in parallel, each learning a different kind of relation, and their outputs are concatenated.</p></div>
+    <div class="card"><span class="num" style="background:var(--c)">4</span><b>Feed-forward</b><p>A 2-layer MLP (expand ~4×, nonlinearity, shrink back) applied to each token independently. This is where most parameters — and much stored "knowledge" — live.</p></div>
+    <div class="card"><span class="num" style="background:var(--d)">5</span><b>Residual + norm</b><p>Each sub-layer <i>adds</i> its output to its input (x + f(x)) and is normalized. This "residual stream" lets 100+ layers train stably; each layer just edits the stream.</p></div>
+    <div class="card"><span class="num" style="background:var(--ink)">6</span><b>Predict &amp; repeat</b><p>The last token's vector is scored against the whole vocabulary, softmax gives probabilities, one token is sampled, appended, and the whole thing runs again.</p></div>
+  </div>
+
+  <div class="grid" style="margin-top:16px;grid-template-columns:1fr 1fr">
+    <div class="card">
+      <h2>Step 6, live: sampling the next token</h2>
+      <div class="row">Context: <b style="color:var(--ink)">"The cat sat on the ___"</b></div>
+      <div class="row">Temperature <input type="range" id="temp" min="0.1" max="2" step="0.05" value="1"> <b id="tv" style="color:var(--ink)">1.00</b></div>
+      <div class="bars" id="bars"></div>
+      <p class="legend">Probabilities = softmax(logits / T). Low T → nearly always "mat" (deterministic). High T → flatter, more surprising picks.</p>
+    </div>
+    <div class="card">
+      <h2>Training, in one paragraph</h2>
+      <p style="font-size:14px;margin-top:0">All the weight matrices (embeddings, W<sub>Q</sub>, W<sub>K</sub>, W<sub>V</sub>, MLPs, output) start random. The model reads trillions of tokens of text, and at <b>every position</b> predicts the next token. The error (cross-entropy loss) is back-propagated and every weight is nudged by gradient descent. Because the causal mask hides the future, one sentence gives a training signal at every word, all computed in parallel — the key advantage over RNNs, which had to process words one at a time.</p>
+      <p style="font-size:14px">Nothing in the attention patterns above is hand-coded in a real model: heads that track grammar or resolve "it → cat" <i>emerge</i> because they make next-token prediction better.</p>
+      <p class="legend">Original paper: "Attention Is All You Need", Vaswani et al., 2017 (encoder–decoder for translation). GPT-style models keep just the decoder stack shown here.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- pipeline info ----
+const INFO={
+ tok:"<b>Tokenizer.</b> Splits text into sub-word tokens and maps each to an integer ID. The model never sees letters, only these IDs.",
+ emb:"<b>Embedding + position.</b> Each ID indexes a row of a learned table → a vector (e.g. 12,288 numbers in GPT-3). Similar words end up with similar vectors. Position information is mixed in so word order is known.",
+ att:"<b>Masked multi-head self-attention.</b> The only place tokens talk to each other. Each head computes Q, K, V via learned matrices, scores Q·K, masks future positions, softmaxes, and mixes V. Try the demo on the right →",
+ norm:"<b>Add &amp; LayerNorm.</b> Adds the sub-layer's output back onto its input (residual) and rescales each vector to a stable range so deep stacks train well. (Modern models normalize <i>before</i> each sub-layer — 'pre-norm'.)",
+ ffn:"<b>Feed-forward network.</b> Per-token MLP: d → 4d → d with a GELU/SwiGLU nonlinearity. No mixing between tokens here — it transforms what attention gathered. ~2/3 of all parameters.",
+ res:"<b>Residual connections.</b> Purple arrows: the input skips around each sub-layer and is added back. Think of a shared 'stream' every layer reads from and writes edits into.",
+ out:"<b>Unembedding + softmax.</b> The final vector of the last token is multiplied against every vocabulary embedding → one score (logit) per token → softmax → probability distribution.",
+ samp:"<b>Sampling.</b> Pick a token from the distribution (greedy, temperature, top-p…), append it to the input, and run the whole stack again. That loop is text generation."
+};
+document.querySelectorAll('.blk').forEach(g=>g.addEventListener('click',()=>{document.getElementById('info').innerHTML=INFO[g.dataset.k]}));
+
+// ---- attention demo ----
+const W=["The","cat","sat","on","the","mat","because","it","was","tired"];
+const n=W.length;
+// head 0: meaning links; head 1: neighbour/grammar links
+const LINKS=[
+ {1:{0:2.2},2:{1:3.2},3:{2:2.4},5:{3:1.6,2:1.6},6:{2:2.4},7:{1:4.2,5:1.2},8:{7:3.2},9:{1:2.6,7:2.6}},
+ {}
+];
+const EXPL=[
+ {7:"\"it\" attends mostly to <b>cat</b> — that's how the model works out what \"it\" refers to.",9:"\"tired\" looks at <b>cat</b> and <b>it</b>: who is tired?",2:"\"sat\" looks at its subject <b>cat</b>.",5:"\"mat\" looks back at <b>sat on</b>: where the sitting happened."},
+ {}
+];
+let head=0,sel=7;
+function weights(){
+  const M=[];
+  for(let i=0;i<n;i++){
+    const s=[];
+    for(let j=0;j<n;j++){
+      let v;
+      if(head===0) v=(i===j?1:0)+((LINKS[0][i]||{})[j]||0);
+      else v=(j===i-1?3:0)+(j===i?1.2:0)+(j===i-2?1:0);
+      const masked=document.getElementById('causal').checked&&j>i;
+      s.push(masked?-Infinity:v);
+    }
+    const mx=Math.max(...s),e=s.map(x=>x===-Infinity?0:Math.exp(x-mx)),z=e.reduce((a,b)=>a+b,0);
+    M.push(e.map(x=>x/z));
+  }
+  return M;
+}
+function mix(p){return `color-mix(in srgb, var(--a) ${Math.round(p*100)}%, var(--card))`}
+function render(){
+  const M=weights();
+  const chips=document.getElementById('chips');chips.innerHTML='';
+  W.forEach((w,j)=>{
+    const c=document.createElement('button');c.className='chip'+(j===sel?' sel':'');
+    const p=M[sel][j];c.style.background=mix(Math.min(1,p*1.6));
+    c.innerHTML=w+`<small>${p<0.005?'–':Math.round(p*100)+'%'}</small>`;
+    c.onclick=()=>{sel=j;render()};chips.appendChild(c);
+  });
+  const ex=(EXPL[head][sel])||(head===1?`Grammar head: "<b>${W[sel]}</b>" mostly looks at the word right before it — a common pattern in real models.`:`"<b>${W[sel]}</b>" — click <b>it</b>, <b>tired</b> or <b>sat</b> for the interesting cases.`);
+  document.getElementById('expl').innerHTML=`Selected: <b>${W[sel]}</b> &nbsp;·&nbsp; `+ex;
+  const mat=document.getElementById('mat');mat.innerHTML='';
+  mat.style.gridTemplateColumns=`64px repeat(${n},1fr)`;
+  mat.appendChild(Object.assign(document.createElement('div'),{}));
+  W.forEach(w=>{const d=document.createElement('div');d.className='clbl';d.textContent=w;mat.appendChild(d)});
+  for(let i=0;i<n;i++){
+    const l=document.createElement('div');l.className='lbl';l.textContent=W[i];if(i===sel)l.style.color='var(--a)',l.style.fontWeight='700';mat.appendChild(l);
+    for(let j=0;j<n;j++){
+      const d=document.createElement('div');d.className='cell';const p=M[i][j];
+      d.style.background=p===0?'var(--bg)':mix(Math.min(1,p*1.4));
+      if(i===sel)d.style.outline='1px solid var(--a)';
+      d.title=`${W[i]} → ${W[j]}: ${(p*100).toFixed(1)}%`;
+      d.textContent=p>=0.1?Math.round(p*100):'';
+      d.style.color=p>0.45?'#fff':'var(--ink)';
+      d.onclick=()=>{sel=i;render()};mat.appendChild(d);
+    }
+  }
+}
+document.querySelectorAll('#heads button').forEach(b=>b.onclick=()=>{head=+b.dataset.h;document.querySelectorAll('#heads button').forEach(x=>x.classList.toggle('on',x===b));render()});
+document.getElementById('causal').onchange=render;
+render();
+
+// ---- sampling demo ----
+const CAND=[["mat",4.0],["floor",3.0],["sofa",2.6],["bed",2.3],["roof",1.4],["moon",0.1]];
+function bars(){
+  const T=+document.getElementById('temp').value;document.getElementById('tv').textContent=T.toFixed(2);
+  const e=CAND.map(([,l])=>Math.exp(l/T)),z=e.reduce((a,b)=>a+b,0);
+  document.getElementById('bars').innerHTML=CAND.map(([w],i)=>{const p=e[i]/z;return `<div class="bar"><span>${w}</span><div class="t" style="width:${(p*100).toFixed(1)}%"></div><span class="v">${(p*100).toFixed(1)}%</span></div>`}).join('');
+}
+document.getElementById('temp').oninput=bars;bars();
+</script>
+</body>
+</html>

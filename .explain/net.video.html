@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Internet in Two Seconds</title>
+<style>
+  html,body{margin:0;height:100%;background:#0e0f14;color:#e8e8f0;font:14px system-ui,sans-serif;overflow:hidden}
+  #wrap{position:fixed;inset:0 0 56px 0;display:flex;align-items:center;justify-content:center}
+  canvas{max-width:100%;max-height:100%;aspect-ratio:16/9;background:#0e0f14}
+  #bar{position:fixed;left:0;right:0;bottom:0;height:56px;display:flex;align-items:center;gap:12px;padding:0 16px;background:#15161d;border-top:1px solid #262838}
+  button{background:#262838;color:#e8e8f0;border:0;border-radius:6px;padding:8px 14px;font:600 13px system-ui;cursor:pointer}
+  input[type=range]{flex:1;accent-color:#58c4dd}
+  #time{font:12px ui-monospace,Menlo,monospace;color:#9aa0b8;min-width:90px;text-align:right}
+  #start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(14,15,20,.7);cursor:pointer;font:600 28px system-ui;color:#58c4dd}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c" width="1920" height="1080"></canvas></div>
+<div id="bar">
+  <button id="play">Pause</button>
+  <input id="seek" type="range" min="0" max="2000" value="0" aria-label="Seek">
+  <span id="time">0.00 / 2.00s</span>
+  <button id="rec">Record</button>
+</div>
+<div id="start">▶ Click to play (with narration)</div>
+<script>
+const cv=document.getElementById('c'),g=cv.getContext('2d');
+const SCENES=[
+  {start:0,end:1,cap:'Your data is split into packets.'},
+  {start:1,end:2,cap:'Routers hop them to the server.'},
+];
+const DUR=2;
+const ease=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const seg=(t,a,b)=>ease(clamp((t-a)/(b-a)));
+const lerp=(a,b,k)=>a+(b-a)*k;
+
+// ---- network ----
+const N={L:{x:300,y:560},A:{x:760,y:360},B:{x:760,y:760},C:{x:1160,y:360},D:{x:1160,y:760},S:{x:1620,y:560}};
+const EDGES=[['L','A'],['L','B'],['A','C'],['A','D'],['B','C'],['B','D'],['C','S'],['D','S']];
+const COLS=['#58c4dd','#fc6255','#83c167'];
+const PK=[{n:1,s:'HE',path:['L','A','C','S'],d:0},{n:2,s:'LL',path:['L','B','D','S'],d:.12},{n:3,s:'O',path:['L','A','D','S'],d:.06}];
+
+function along(path,k){
+  const pts=path.map(p=>N[p]),lens=[];let tot=0;
+  for(let i=1;i<pts.length;i++){const l=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);lens.push(l);tot+=l}
+  let d=k*tot;for(let i=0;i<lens.length;i++){if(d<=lens[i]){const f=d/lens[i];return{x:lerp(pts[i].x,pts[i+1].x,f),y:lerp(pts[i].y,pts[i+1].y,f),seg:i}}d-=lens[i]}
+  return{...pts[pts.length-1],seg:lens.length};
+}
+function text(s,x,y,sz,col='#e8e8f0',w=600,al='center'){g.font=`${w} ${sz}px "Helvetica Neue",system-ui,sans-serif`;g.fillStyle=col;g.textAlign=al;g.textBaseline='middle';g.fillText(s,x,y)}
+function rrect(x,y,w,h,r){g.beginPath();g.roundRect(x,y,w,h,r)}
+function packet(p,x,y,a=1){g.globalAlpha=a;const c=COLS[p.n-1];g.fillStyle='#14151c';g.strokeStyle=c;g.lineWidth=4;rrect(x-70,y-36,140,72,14);g.fill();g.stroke();
+  text(p.n,x-38,y,28,c,800);text(p.s,x+16,y,34,'#e8e8f0',700);g.globalAlpha=1}
+function laptop(x,y,a){g.globalAlpha=a;g.strokeStyle='#e8e8f0';g.lineWidth=5;rrect(x-90,y-70,180,115,10);g.stroke();g.beginPath();g.moveTo(x-125,y+65);g.lineTo(x+125,y+65);g.stroke();text('You',x,y+115,30,'#9aa0b8',500);g.globalAlpha=1}
+function server(x,y,a){g.globalAlpha=a;g.strokeStyle='#e8e8f0';g.lineWidth=5;for(let i=0;i<3;i++){rrect(x-80,y-95+i*65,160,52,8);g.stroke();g.fillStyle='#83c167';g.beginPath();g.arc(x+50,y-69+i*65,7,0,7);g.fill()}text('Server',x,y+125,30,'#9aa0b8',500);g.globalAlpha=1}
+function router(n,a,lit){g.globalAlpha=a;g.fillStyle=lit?'#1d2a33':'#14151c';g.strokeStyle=lit?'#58c4dd':'#5a5f78';g.lineWidth=4;g.beginPath();g.arc(n.x,n.y,40,0,7);g.fill();g.stroke();
+  g.strokeStyle=lit?'#58c4dd':'#5a5f78';g.lineWidth=3;g.beginPath();g.moveTo(n.x-18,n.y);g.lineTo(n.x+18,n.y);g.moveTo(n.x,n.y-18);g.lineTo(n.x,n.y+18);g.stroke();g.globalAlpha=1}
+
+function draw(t){
+  g.fillStyle='#0e0f14';g.fillRect(0,0,1920,1080);
+  const fadeIn=seg(t,0,.25), netIn=seg(t,.15,.55);
+  text('How the internet moves data',80,80,34,'#9aa0b8',500,'left');
+
+  // edges
+  const lit=new Set();
+  if(t>=1)PK.forEach(p=>{const k=clamp((t-1-p.d)/.62);const pos=along(p.path,ease(k));for(let i=0;i<=Math.min(pos.seg,p.path.length-2);i++)lit.add(p.path[i]+p.path[i+1])});
+  EDGES.forEach(([a,b])=>{const on=lit.has(a+b);g.globalAlpha=netIn*(on?1:.45);g.strokeStyle=on?'#58c4dd':'#3a3e52';g.lineWidth=on?5:3;g.beginPath();g.moveTo(N[a].x,N[a].y);g.lineTo(N[b].x,N[b].y);g.stroke()});
+  g.globalAlpha=1;
+  ['A','B','C','D'].forEach(r=>router(N[r],netIn,[...lit].some(e=>e.includes(r))));
+  if(netIn>0){g.globalAlpha=netIn;text('routers',960,560,28,'#5a5f78',500);g.globalAlpha=1}
+  laptop(N.L.x,N.L.y,fadeIn);server(N.S.x,N.S.y,fadeIn);
+
+  // scene 0: message splits into packets
+  if(t<1){
+    const split=seg(t,.35,.9);
+    const msgA=seg(t,.1,.3)*(1-seg(t,.35,.5));
+    if(msgA>0){g.globalAlpha=msgA;g.strokeStyle='#e8e8f0';g.lineWidth=4;rrect(N.L.x-130,250,260,90,16);g.stroke();text('HELLO',N.L.x,295,48,'#e8e8f0',800);g.globalAlpha=1}
+    PK.forEach((p,i)=>{if(split<=0)return;const x=lerp(N.L.x-60+i*60,N.L.x,split),y=lerp(295,250+i*90-60+ (i-1)*0,split);packet(p,x,lerp(295,200+i*85,split),split)});
+  } else {
+    // scene 1: packets travel, then reassemble
+    const asm=seg(t,1.72,1.97);
+    PK.forEach((p,i)=>{
+      const k=ease(clamp((t-1-p.d)/.62));let {x,y}=along(p.path,k);
+      if(k>=1){x=lerp(N.S.x,N.S.x-90+i*90,asm);y=lerp(N.S.y,260,asm)}
+      packet(p,x,y,1-asm*.999);
+    });
+    if(asm>0){g.globalAlpha=asm;g.strokeStyle='#83c167';g.lineWidth=4;rrect(N.S.x-140,215,280,90,16);g.stroke();text('HELLO',N.S.x,260,48,'#e8e8f0',800);text('✓',N.S.x+175,260,48,'#83c167',800);g.globalAlpha=1}
+  }
+
+  // caption
+  const sc=SCENES.find(s=>t>=s.start&&t<s.end)||SCENES[SCENES.length-1];
+  const ca=Math.min(seg(t,sc.start,sc.start+.15),1);
+  g.globalAlpha=ca;g.fillStyle='rgba(0,0,0,.55)';rrect(560,940,800,80,14);g.fill();text(sc.cap,960,980,40,'#ffffff',600);g.globalAlpha=1;
+}
+
+// ---- clock, controls, narration ----
+let t=0,playing=false,last=0,spoken=-1,voice=null,rec=null;
+function pickVoice(){const vs=speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang));
+  voice=vs.find(v=>/premium|enhanced|natural/i.test(v.name))||vs.find(v=>v.localService)||vs[0]||null}
+speechSynthesis.onvoiceschanged=pickVoice;pickVoice();
+function sceneAt(t){return SCENES.findIndex(s=>t>=s.start&&t<s.end)}
+function narrate(i){if(i<0||i===spoken)return;spoken=i;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(SCENES[i].cap);if(voice)u.voice=voice;u.rate=1.5;speechSynthesis.speak(u)}
+const playBtn=document.getElementById('play'),seek=document.getElementById('seek'),time=document.getElementById('time');
+function setPlaying(p){playing=p;playBtn.textContent=p?'Pause':'Play';if(!p)speechSynthesis.cancel();last=performance.now()}
+function jump(nt){t=clamp(nt,0,DUR);spoken=-1;speechSynthesis.cancel()}
+function frame(now){
+  if(playing){t+=(now-last)/1000;if(t>=DUR){t=DUR;setPlaying(false);if(rec&&rec.state==='recording')setTimeout(()=>rec.stop(),200)}else narrate(sceneAt(t))}
+  last=now;draw(Math.min(t,DUR-1e-4));seek.value=t*1000;time.textContent=`${t.toFixed(2)} / ${DUR.toFixed(2)}s`;requestAnimationFrame(frame);
+}
+playBtn.onclick=()=>{if(!playing&&t>=DUR)jump(0);setPlaying(!playing)};
+seek.oninput=()=>jump(seek.value/1000);
+addEventListener('keydown',e=>{
+  if(e.key===' '){e.preventDefault();playBtn.click()}
+  const i=Math.max(0,sceneAt(Math.min(t,DUR-1e-4)));
+  if(e.key==='ArrowRight')jump(SCENES[Math.min(i+1,SCENES.length-1)].start);
+  if(e.key==='ArrowLeft')jump(SCENES[t-SCENES[i].start>.2?i:Math.max(0,i-1)].start);
+});
+document.getElementById('start').onclick=e=>{e.currentTarget.remove();jump(0);setPlaying(true)};
+document.getElementById('rec').onclick=()=>{
+  // device TTS can't be captured by MediaRecorder, so the recording is video only
+  const s=cv.captureStream(60);rec=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm'});
+  const chunks=[];rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+  rec.onstop=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(chunks,{type:'video/webm'}));a.download='net-explainer.webm';a.click()};
+  document.getElementById('start')?.remove();jump(0);rec.start();setPlaying(true);
+};
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

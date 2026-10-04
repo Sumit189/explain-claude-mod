@@ -1,0 +1,30 @@
+flowchart TD
+    A["Input text<br/>'the cat sat'"] --> B["Tokenize → token IDs"]
+    B --> C["Embedding lookup<br/>each token → vector (d=4096)"]
+    C --> D["+ Positional info<br/>(RoPE / sinusoidal)"]
+    D --> L
+
+    subgraph L["Transformer block × N (e.g. 32–100+)"]
+        direction TB
+        N1["LayerNorm"] --> ATT
+        subgraph ATT["Multi-head self-attention"]
+            direction LR
+            Q["Q = xW_q<br/>what am I looking for?"]
+            K["K = xW_k<br/>what do I contain?"]
+            V["V = xW_v<br/>what do I pass on?"]
+            S["scores = softmax(QKᵀ/√d + causal mask)"]
+            Q --> S
+            K --> S
+            S --> O["weighted sum of V<br/>per head, concat, W_o"]
+            V --> O
+        end
+        ATT --> R1(("+ residual"))
+        R1 --> N2["LayerNorm"]
+        N2 --> F["Feed-forward MLP<br/>expand 4×, nonlinearity, project back<br/>(per token, stores 'knowledge')"]
+        F --> R2(("+ residual"))
+    end
+
+    L --> H["Final LayerNorm → unembedding<br/>vector → logits over vocab"]
+    H --> P["softmax → next-token probabilities<br/>'on' 0.41, 'down' 0.22 …"]
+    P --> SM["Sample a token"]
+    SM -. "append & repeat<br/>(KV cache reuses past K,V)" .-> B

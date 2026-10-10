@@ -36,3 +36,13 @@ Needs **Claude Code 2.1.287 or later** (check with `claude --version`). The desk
 Then start a new session. To try a local copy without installing: `claude --plugin-dir ./explain-claude-mod`.
 
 This uses Claude Code function hooks, which are in early access. Run the tests with `claude plugin test ./explain-claude-mod`.
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=sumit189%2Fexplain-claude-mod&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=sumit189/explain-claude-mod&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=sumit189/explain-claude-mod&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=sumit189/explain-claude-mod&type=date&legend=top-left" />
+ </picture>
+</a>
